@@ -66,7 +66,6 @@ def apply_grid(fig):
     return fig
 
 def grade_questions(df, answer_key):
-    """Calculates accuracy per question."""
     results = {}
     total_responses = len(df)
     
@@ -81,9 +80,7 @@ def grade_questions(df, answer_key):
     return results
 
 def get_participant_scores(df, answer_key):
-    """Calculates the overall score percentage for each individual participant."""
     scores = []
-    total_questions = len(answer_key)
     
     for index, row in df.iterrows():
         correct = 0
@@ -92,7 +89,7 @@ def get_participant_scores(df, answer_key):
             if matched_col and pd.notna(row[matched_col]):
                 if correct_answer.lower() in str(row[matched_col]).lower():
                     correct += 1
-        scores.append((correct / total_questions) * 100)
+        scores.append(correct)
     return scores
 
 def generate_gemini_insights(pre_data, post_data, current_api_key):
@@ -145,17 +142,14 @@ def generate_gemini_insights(pre_data, post_data, current_api_key):
         return f"Error generating insights: {e}"
 
 def create_pdf(report_text):
-    """Generates a formatted PDF from the markdown report text."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Title
     pdf.set_font("helvetica", "B", 16)
     pdf.cell(0, 10, "Teacher Mental Health Training - Insights Report", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
     pdf.ln(10)
     
-    # Sanitize text
     replacements = {
         '**': '', 
         '\u2018': "'", '\u2019': "'",
@@ -163,21 +157,19 @@ def create_pdf(report_text):
         '\u2013': "-", '\u2014': "-",
         '\u2022': "-",                
         '*': '-',                     
-        '\t': '    '  # Explicitly replace tabs with spaces to prevent width calculation failures
+        '\t': '    '  
     }
     
     clean_text = report_text
     for old, new in replacements.items():
         clean_text = clean_text.replace(old, new)
         
-    # Use 'ignore' to drop any remaining un-renderable characters instead of replacing them with '?'
     clean_text = clean_text.encode('latin-1', 'ignore').decode('latin-1')
 
     pdf.set_font("helvetica", "", 12)
     for line in clean_text.split('\n'):
         line = line.strip()
         
-        # Skip markdown horizontal dividers
         if not line or set(line) <= {'-', '_', ' '}:
             pdf.ln(4)
             continue
@@ -185,7 +177,6 @@ def create_pdf(report_text):
         if line.startswith('### '):
             pdf.ln(4)
             pdf.set_font("helvetica", "B", 14)
-            # pdf.write automatically handles wrapping without strict width constraints
             pdf.write(10, line.replace('### ', '') + '\n')
             pdf.set_font("helvetica", "", 12)
         else:
@@ -236,25 +227,54 @@ if st.session_state.get('process_clicked', False) and (pre_file or post_file):
         df_post['Phase'] = 'Post-Webinar'
         df_post['Question_Short'] = [f"Q{i+1}" for i in range(len(df_post))]
 
-    # --- Section 1: Question Level Accuracy ---
+    # --- Section 1: Executive Participant Overview ---
+    st.subheader("Participant Overview")
+    
+    if pre_file and post_file:
+        col_pre, col_post = st.columns(2)
+        with col_pre:
+            st.markdown("**Pre-Webinar Statistics**")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Participants", len(pre_scores))
+            c2.metric("Avg Score", f"{sum(pre_scores)/len(pre_scores):.1f} / 12")
+            c3.metric("Highest Score", f"{max(pre_scores)} / 12")
+        with col_post:
+            st.markdown("**Post-Webinar Statistics**")
+            c4, c5, c6 = st.columns(3)
+            c4.metric("Total Participants", len(post_scores))
+            
+            pre_avg_score = sum(pre_scores)/len(pre_scores)
+            post_avg_score = sum(post_scores)/len(post_scores)
+            
+            c5.metric("Avg Score", f"{post_avg_score:.1f} / 12", delta=f"{(post_avg_score - pre_avg_score):.1f}")
+            c6.metric("Highest Score", f"{max(post_scores)} / 12", delta=f"{max(post_scores) - max(pre_scores)}")
+            
+    elif pre_file:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Participants", len(pre_scores))
+        c2.metric("Avg Score", f"{sum(pre_scores)/len(pre_scores):.1f} / 12")
+        c3.metric("Highest Score", f"{max(pre_scores)} / 12")
+        
+    elif post_file:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Participants", len(post_scores))
+        c2.metric("Avg Score", f"{sum(post_scores)/len(post_scores):.1f} / 12")
+        c3.metric("Highest Score", f"{max(post_scores)} / 12")
+
+    st.markdown("---")
+
+    # --- Section 2: Question Level Accuracy ---
     st.subheader("Question-Level Analysis")
     
     if pre_file and post_file:
-        c1, c2, c3 = st.columns(3)
-        pre_avg = df_pre['Accuracy (%)'].mean()
-        post_avg = df_post['Accuracy (%)'].mean()
-        delta = post_avg - pre_avg
-        
-        c1.metric("Pre-Webinar Avg", f"{pre_avg:.1f}%")
-        c2.metric("Post-Webinar Avg", f"{post_avg:.1f}%", delta=f"{delta:.1f}%")
-        c3.info("Compare Q1-Q12 directly to see areas of growth and stagnation.")
-        
         fig_comp = go.Figure()
         fig_comp.add_trace(go.Bar(x=df_pre['Question_Short'], y=df_pre['Accuracy (%)'], 
                                   name='Pre-Webinar', marker_color='#1f77b4',
+                                  marker_line_color='black', marker_line_width=1,  # Added Edge Color
                                   hovertext=df_pre['Question']))
         fig_comp.add_trace(go.Bar(x=df_post['Question_Short'], y=df_post['Accuracy (%)'], 
                                   name='Post-Webinar', marker_color='#2ca02c',
+                                  marker_line_color='black', marker_line_width=1,  # Added Edge Color
                                   hovertext=df_post['Question']))
         fig_comp.update_layout(title="Pre vs Post Webinar Comparison per Question",
                                barmode='group', yaxis_range=[0, 100])
@@ -262,41 +282,50 @@ if st.session_state.get('process_clicked', False) and (pre_file or post_file):
 
     else:
         if pre_file:
-            st.metric("Avg. Pre-Webinar Accuracy", f"{df_pre['Accuracy (%)'].mean():.1f}%")
             fig_pre = px.bar(df_pre.sort_values("Accuracy (%)"), x="Accuracy (%)", y="Question_Short", orientation='h',
                              title="Pre-Webinar - Performance Spread", hover_data=['Question'])
+            fig_pre.update_traces(marker_line_color='black', marker_line_width=1)  # Added Edge Color
             fig_pre.update_xaxes(range=[0, 100])
             st.plotly_chart(apply_grid(fig_pre), width="stretch")
             
         if post_file:
-            st.metric("Avg. Post-Webinar Accuracy", f"{df_post['Accuracy (%)'].mean():.1f}%")
             fig_post = px.bar(df_post.sort_values("Accuracy (%)"), x="Accuracy (%)", y="Question_Short", orientation='h',
                               title="Post-Webinar - Performance Spread", hover_data=['Question'])
+            fig_post.update_traces(marker_line_color='black', marker_line_width=1)  # Added Edge Color
             fig_post.update_xaxes(range=[0, 100])
             st.plotly_chart(apply_grid(fig_post), width="stretch")
             
-    # --- Section 2: Participant Score Distribution ---
+    # --- Section 3: Participant Score Distribution ---
     st.markdown("---")
     st.subheader("Participant Score Distribution (Frequency)")
     
     if pre_file and post_file:
         fig_dist = go.Figure()
-        fig_dist.add_trace(go.Histogram(x=pre_scores, name='Pre-Webinar', marker_color='#1f77b4', opacity=0.75))
-        fig_dist.add_trace(go.Histogram(x=post_scores, name='Post-Webinar', marker_color='#2ca02c', opacity=0.75))
-        fig_dist.update_layout(barmode='overlay', title="Frequency of Participant Scores (%)", 
-                               xaxis_title="Score (%)", yaxis_title="Number of Teachers")
+        fig_dist.add_trace(go.Histogram(x=pre_scores, name='Pre-Webinar', marker_color='#1f77b4', opacity=0.75, 
+                                        xbins=dict(start=-0.5, end=12.5, size=1), 
+                                        marker_line_color='black', marker_line_width=1))  # Added Edge Color
+        fig_dist.add_trace(go.Histogram(x=post_scores, name='Post-Webinar', marker_color='#2ca02c', opacity=0.75, 
+                                        xbins=dict(start=-0.5, end=12.5, size=1), 
+                                        marker_line_color='black', marker_line_width=1))  # Added Edge Color
+        fig_dist.update_layout(barmode='overlay', title="Frequency of Participant Scores (Out of 12)", 
+                               xaxis_title="Score (out of 12)", yaxis_title="Number of Teachers",
+                               xaxis=dict(tickmode='linear', tick0=0, dtick=1))
         st.plotly_chart(apply_grid(fig_dist), width="stretch")
     else:
         if pre_file:
-            fig_dist = px.histogram(x=pre_scores, nbins=10, title="Frequency of Pre-Webinar Scores",
-                                    labels={'x': 'Score (%)', 'y': 'Count'}, color_discrete_sequence=['#1f77b4'])
+            fig_dist = px.histogram(x=pre_scores, title="Frequency of Pre-Webinar Scores",
+                                    labels={'x': 'Score (out of 12)', 'y': 'Count'}, color_discrete_sequence=['#1f77b4'])
+            fig_dist.update_traces(xbins=dict(start=-0.5, end=12.5, size=1), marker_line_color='black', marker_line_width=1)  # Added Edge Color
+            fig_dist.update_layout(xaxis=dict(tickmode='linear', tick0=0, dtick=1))
             st.plotly_chart(apply_grid(fig_dist), width="stretch")
         if post_file:
-            fig_dist = px.histogram(x=post_scores, nbins=10, title="Frequency of Post-Webinar Scores",
-                                    labels={'x': 'Score (%)', 'y': 'Count'}, color_discrete_sequence=['#2ca02c'])
+            fig_dist = px.histogram(x=post_scores, title="Frequency of Post-Webinar Scores",
+                                    labels={'x': 'Score (out of 12)', 'y': 'Count'}, color_discrete_sequence=['#2ca02c'])
+            fig_dist.update_traces(xbins=dict(start=-0.5, end=12.5, size=1), marker_line_color='black', marker_line_width=1)  # Added Edge Color
+            fig_dist.update_layout(xaxis=dict(tickmode='linear', tick0=0, dtick=1))
             st.plotly_chart(apply_grid(fig_dist), width="stretch")
 
-    # --- Section 3: AI Insight Generation & Export ---
+    # --- Section 4: AI Insight Generation & Export ---
     st.markdown("---")
     st.header("Actionable Insights")
     
