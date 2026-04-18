@@ -16,7 +16,11 @@ from fpdf.enums import XPos, YPos
 load_dotenv()
 
 # --- Configure Page ---
-st.set_page_config(page_title="Webinar Insights Dashboard", layout="wide")
+st.set_page_config(
+    page_title="EDXSO Webinar Insights Dashboard", 
+    page_icon="EDXSO Tab Logo.png", # Added the Edxso logo here
+    layout="wide"
+)
 st.title("Teacher Mental Health Training: Insights Dashboard")
 
 # --- Backend Config Setup ---
